@@ -1,5 +1,5 @@
 {
-  "name": "taggart",
+  "name": "@ramlmn/taggart",
   "version": "0.1.0",
   "description": "An ETag header middleware for express like apps",
   "main": "index.js",
