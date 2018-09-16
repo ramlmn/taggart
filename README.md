@@ -1,6 +1,7 @@
 # taggart
 
-[![Greenkeeper badge](https://badges.greenkeeper.io/ramlmn/taggart.svg)](https://greenkeeper.io/)
+> **Note:** Please have a look at [this commit](https://github.com/ramlmn/taggart/commit/a0c56d6f6d103a1259e299459aa055e4760a1da2),
+any help is appreciated.
 
 An ETag header middleware for express like apps. It is a zero dependency
 middleware which generates `ETags` accurately.
