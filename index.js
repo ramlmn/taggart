@@ -2,55 +2,92 @@
 
 const crypto = require('crypto');
 
+const noop = _ => {};
+
 /**
  * An ETag header middleware for express like apps
  *
- * @param {Object} req http IncomingMessage
- * @param {Object} res http ServerReponse
- * @param {Function} next next middleware to call
+ * @param {Object} opts options
+ * @param {Boolean} opts.weak weak tags?
+ * @return {Function}
  */
-const addEtag = (req, res, next = _ => {}) => {
-  const write = res.write;
-  const end = res.end;
-  const send = res.send;
+const addEtag = opts => {
+  const weak = (opts !== undefined) ? !!opts.weak : false;
 
-  const onData = (...args) => {
-    if (!res.headersSent
-      && !res.getHeader('Transfer-Encoding')
-      && !res.getHeader('TE')
-      && res.getHeader('Content-Length')) {
-      // we are in luck
-      const body = args[0];
+  return (req, res, next = noop) => {
+    const write = res.write;
+    const end = res.end;
 
-      // @TODO: allow weak etags
+    // sha1 ain't that bad
+    const hash = crypto.createHash('sha1');
 
-      // genarate the etag
-      const etag = crypto.createHash('sha1')
-        .update(body)
-        .digest('hex');
+    // keep track, for content-length
+    let length = 0;
 
-      res.setHeader('ETag', etag);
+    let onData = (chunk, encoding) => {
+      const TE = (res.getHeader('Transfer-Encoding') || res.getHeader('TE') || '').toLowerCase();
+
+      // if (chunk) {
+      //   console.log(Buffer.byteLength(chunk, 'utf8'), res.headersSent, TE);
+      // } else {
+      //   console.log(undefined, res.headersSent, TE);
+      // }
+
+      if (res.headersSent || TE === 'chunked') {
+        // bail
+        onData = noop;
+        return;
+      }
+
+      // convert chunk to buffer
+      chunk = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding);
+
+      hash.update(chunk);
+      length += Buffer.byteLength(chunk, 'utf8');
+    };
+
+    const onEnd = (chunk, encoding) => {
+      onData(chunk, encoding);
+
+      // generate tag
+      const l = length.toString(16);
+      const h = hash.digest('hex');
+
+      const tag = weak ? `W/${l}-${h}` : `${l}-${h}`;
+
+      // check if headers can be sent, ignore TE
+      if (!res.headersSent) {
+        res.setHeader('Content-Length', length);
+
+        if (res.getHeader('ETag')) {
+          res.removeHeader('ETag');
+        }
+
+        res.setHeader('ETag', tag);
+      }
+    };
+
+    // override the default methods
+    res.write = (...args) => {
+      onData(...args);
+      write.apply(res, [...args]);
+    };
+
+    res.end = (...args) => {
+      onEnd(...args);
+      end.apply(res, [...args]);
+    };
+
+    // non standard, express like
+    res.send = (...args) => {
+      onEnd(...args);
+      end.apply(res, [...args]);
+    };
+
+    if (typeof next === 'function') {
+      next();
     }
   };
-
-  // override the default methods and collect response buffer
-
-  res.write = (...args) => {
-    onData(...args);
-    write.apply(res, [...args]);
-  };
-
-  res.end = (...args) => {
-    onData(...args);
-    end.apply(res, [...args]);
-  };
-
-  res.send = (...args) => {
-    onData(...args);
-    send.apply(res, [...args]);
-  };
-
-  next();
 };
 
 
